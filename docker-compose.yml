@@ -1,0 +1,53 @@
+# EM6 Brain - Stage 0
+# Ollama (the brain) runs natively on Windows, NOT in here.
+# Every port is bound to 127.0.0.1, so nothing is reachable from the network.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: brain
+      POSTGRES_USER: brain
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5433:5432"   # for pgAdmin on this PC; 5433 so it can't clash with a local Postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brain -d brain"]
+      interval: 5s
+      retries: 10
+
+  orchestrator:
+    build: ./orchestrator
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://brain:${POSTGRES_PASSWORD}@postgres:5432/brain
+      BRAIN_URL: ${BRAIN_URL:-http://host.docker.internal:11434}
+      BRAIN_MODEL: ${BRAIN_MODEL:-qwen2.5:7b}
+      BRAIN_NUM_CTX: ${BRAIN_NUM_CTX:-8192}
+      TOOL_SERVICES: http://clock-tool:8000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"   # API docs at http://localhost:8000/docs
+
+  # ---- Tools: one container each. A new tool = a new block + its URL in TOOL_SERVICES.
+  clock-tool:
+    build: ./tools/clock-tool
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - orchestrator
+    ports:
+      - "127.0.0.1:8080:80"     # the app: http://localhost:8080
+
+volumes:
+  pgdata:

@@ -1,0 +1,65 @@
+<div class="shell">
+  <aside class="side">
+    <div class="brand">EM6 Brain</div>
+    <button class="new" (click)="newChat()" [disabled]="busy()">+ New chat</button>
+
+    <nav class="history">
+      @for (c of conversations(); track c.id) {
+        <button class="conv" [class.active]="c.id === conversationId()" (click)="open(c)"
+                [disabled]="busy()" [title]="c.title">{{ c.title }}</button>
+      } @empty {
+        <p class="muted small">No conversations yet.</p>
+      }
+    </nav>
+
+    <div class="status">
+      @if (health(); as h) {
+        <div class="row" [title]="h.brain.error ?? h.brain.url">
+          <span class="dot" [class.ok]="h.brain.ok"></span>
+          Brain · {{ h.brain.model }}
+          @if (!h.brain.ok && h.brain.model_installed === false) { <span class="muted">(model missing)</span> }
+          @if (!h.brain.ok && h.brain.error) { <span class="muted">(offline)</span> }
+        </div>
+        <div class="row"><span class="dot" [class.ok]="h.database.ok"></span> Log database</div>
+        <div class="row"><span class="dot" [class.ok]="toolsOk()"></span> Tools {{ toolSummary() }}</div>
+      } @else {
+        <div class="row"><span class="dot"></span> App server offline</div>
+      }
+    </div>
+  </aside>
+
+  <main class="chat">
+    <section class="messages" #scroller>
+      @if (turns().length === 0) {
+        <div class="empty">
+          <h1>What do you want to work on?</h1>
+          <p class="muted">The brain runs on this PC. Answers can take a minute: it reads, then writes about 4 words a second.</p>
+        </div>
+      }
+      @for (t of turns(); track $index) {
+        <div class="turn" [class.user]="t.role === 'user'" [class.error]="t.role === 'error'">
+          @for (s of t.tools; track $index) {
+            <div class="tool" [class.fail]="s.ok === false">
+              ⚙ {{ s.name }}
+              @if (s.ok === null) { <span class="muted">running…</span> }
+              @else { <span class="muted">{{ s.ok ? '✓' : '✕ failed' }} · {{ s.ms }} ms</span> }
+            </div>
+          }
+          @if (t.text) {
+            <div class="bubble">{{ t.text }}</div>
+          } @else if (t.role === 'assistant' && waitingForFirstWord() && $last) {
+            <div class="bubble thinking">Thinking… {{ waitSeconds() }}s</div>
+          }
+          @if (t.stats) { <div class="stats">{{ t.stats }}</div> }
+        </div>
+      }
+    </section>
+
+    <form class="composer" (submit)="$event.preventDefault(); send()">
+      <textarea [ngModel]="draft()" (ngModelChange)="draft.set($event)" name="draft" rows="2"
+                (keydown)="onKey($event)" [disabled]="busy()"
+                placeholder="Ask the brain…  (Enter to send, Shift+Enter for a new line)"></textarea>
+      <button type="submit" [disabled]="busy() || !draft().trim()">{{ busy() ? 'Working…' : 'Send' }}</button>
+    </form>
+  </main>
+</div>

@@ -1,0 +1,28 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Node / Angular
+node_modules/
+dist/
+.angular/
+
+# Editors / OS
+.vs/
+.vscode/
+*.user
+Thumbs.db
+.DS_Store
+
+# Never commit real carrier or client files
+data/
+uploads/
+*.xlsx
+*.xls
+*.xlsm
+*.csv
+*.pdf

@@ -1,0 +1,94 @@
+// EM6 Brain - start everything from VS Code: Run and Debug panel -> 'EM6 Brain (all)' -> F5.
+// Needs the VS Code extensions 'Python' and 'Python Debugger'. Ollama runs separately.
+// POSTGRES_PASSWORD comes from .env; the local addresses below override .env's Docker ones.
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Brain: clock-tool",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "app.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8101"
+      ],
+      "cwd": "${workspaceFolder}/tools/clock-tool",
+      "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {},
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Brain: excel-tool",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "app.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8102"
+      ],
+      "cwd": "${workspaceFolder}/tools/excel-tool",
+      "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "FILES_DIR": "${workspaceFolder}/data/uploads"
+      },
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Brain: orchestrator",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "app.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000"
+      ],
+      "cwd": "${workspaceFolder}/orchestrator",
+      "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "BRAIN_URL": "http://127.0.0.1:11434",
+        "TOOL_SERVICES": "http://127.0.0.1:8101,http://127.0.0.1:8102",
+        "FILES_DIR": "${workspaceFolder}/data/uploads"
+      },
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Brain: frontend",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm start",
+      "cwd": "${workspaceFolder}/frontend",
+      "env": {
+        "NG_CLI_ANALYTICS": "false"
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "EM6 Brain (all)",
+      "configurations": [
+        "Brain: clock-tool",
+        "Brain: excel-tool",
+        "Brain: orchestrator",
+        "Brain: frontend"
+      ],
+      "preLaunchTask": "Brain: install packages",
+      "stopAll": true
+    }
+  ]
+}

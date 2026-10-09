@@ -36,9 +36,13 @@ rate hub, helps auditors, and later supports managers. Secure, local-first, buil
 - [x] First run with `run-local.ps1`: real model answered; called `get_current_time` on its own (298 ms); ~5 tok/s, ~11-12 s per short answer
 - Note: until the PC restarts, start Ollama with `$env:OLLAMA_MODELS="E:\ollama\models"; ollama serve` (the old tray app looks at C:)
 - [ ] Later: fix Docker Desktop (or use Docker on the server)
-- [ ] Git repo initialised, first commit
+- [x] Git repo: private `raman-gitdev/em6-brain`, first commit pushed
 - [ ] Test set: 20-30 already-loaded carrier files with known correct answers (kept outside Git)
 - [ ] Baseline score recorded
 
-## Next
-Stage 1 first tool: `excel-tool` (read workbook, list sheets, find header rows, sample rows, merged cells).
+## Stage 1 (started)
+- [x] File upload in chat (📎). Files saved to `data/uploads/<file_id>/` with `meta.json`; .xlsx .xlsm .xls .csv, max 50 MB
+- [x] `excel-tool`: `excel_profile` (sheets, title rows, likely header, sample rows, column types, merged cells),
+      `excel_read_range` (max 400 cells), `excel_search`. Tested on anonymised sample files.
+- [ ] Try on real carrier files from the test set; note where the profile or the model goes wrong
+- [ ] PDF reading (text PDFs first), masters lookup, read-only rate hub queries

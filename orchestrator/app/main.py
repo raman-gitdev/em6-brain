@@ -4,17 +4,18 @@ It keeps the conversation, asks the brain, runs the tools the brain asks for,
 and logs every step to Postgres.
 """
 import json
+import os
 import pathlib
 import time
 import uuid
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from . import brain, config, db
+from . import brain, config, db, files
 from .tools import ToolRegistry
 
 SYSTEM_PROMPT = (pathlib.Path(__file__).parent / "prompts" / "system.md").read_text(encoding="utf-8")
@@ -26,6 +27,7 @@ http: httpx.AsyncClient
 async def lifespan(_: FastAPI):
     global http
     http = httpx.AsyncClient()
+    os.makedirs(config.FILES_DIR, exist_ok=True)
     await db.init(config.DATABASE_URL)
     yield
     await http.aclose()
@@ -38,6 +40,7 @@ app = FastAPI(title="EM6 Brain orchestrator", lifespan=lifespan)
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=20000)
     conversation_id: uuid.UUID | None = None
+    attachments: list[str] = Field(default_factory=list, max_length=10)  # file_ids from /api/files
 
 
 def _event(**kw) -> bytes:
@@ -68,14 +71,27 @@ async def conversation_messages(conversation_id: uuid.UUID):
     return await db.conversation_messages(conversation_id)
 
 
+@app.post("/api/files")
+async def upload_file(file: UploadFile = File(...)):
+    """Saves an attached file and returns its file_id for the next chat message."""
+    meta = await files.save(file)
+    return {"file_id": meta["file_id"], "name": meta["original_name"], "size": meta["size"]}
+
+
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     """Streams newline-delimited JSON events:
     conversation, token, tool, tool_result, done, error."""
     if req.conversation_id and not await db.conversation_exists(req.conversation_id):
         raise HTTPException(404, "Conversation not found")
+    content = req.message
+    for file_id in req.attachments:
+        meta = files.get(file_id)
+        if not meta:
+            raise HTTPException(400, f"Unknown attachment {file_id}")
+        content += f"\n\n[Attached file: {meta['original_name']} | file_id: {file_id}]"
     conv_id = req.conversation_id or await db.new_conversation(req.message.strip())
-    await db.log_message(conv_id, "user", req.message)
+    await db.log_message(conv_id, "user", content)
     return StreamingResponse(_run_chat(conv_id), media_type="application/x-ndjson")
 
 

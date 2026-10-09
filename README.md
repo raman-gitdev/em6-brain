@@ -9,7 +9,7 @@ Stage 0: chat, tool calling, and a full log of every question, answer and tool c
 Browser ──> frontend (Angular, nginx)  :8080
                └─ /api ──> orchestrator (FastAPI)  :8000
                               ├─> brain: Ollama on Windows  :11434  (BRAIN_URL)
-                              ├─> clock-tool (one container per tool)
+                              ├─> clock-tool, excel-tool (one service per tool)
                               └─> postgres (conversations + logs)  :5433
 ```
 
@@ -33,15 +33,43 @@ Useful:
 - http://localhost:8000/docs - the API, to try calls by hand
 - `docker compose down` - stop (data is kept in the `pgdata` volume)
 
+## Running locally: `npm run dev` (easiest)
+
+1. Ollama running (`ollama list` shows the models).
+2. In the `Brain` folder, in any terminal (VS Code's is fine):
+   ```powershell
+   npm run dev
+   ```
+   It reads `.env`, installs/updates packages, then starts clock-tool, excel-tool, orchestrator and
+   frontend in this one terminal, each line labelled. **Ctrl+C stops everything.**
+3. Open http://localhost:4200
+
+## Running from VS Code's Run and Debug panel
+
+1. Ollama running (`ollama list` shows the models).
+2. Open the `Brain` folder in VS Code. Extensions needed: **Python** and **Python Debugger**.
+3. Run and Debug panel (Ctrl+Shift+D) -> pick **EM6 Brain (all)** -> F5.
+   It installs/updates packages, then starts clock-tool, excel-tool, orchestrator and frontend,
+   each in its own VS Code terminal. Stop with Shift+F5.
+4. Open http://localhost:4200
+
 ## Running without Docker (current setup on Raman's PC)
 
 Docker Desktop isn't running on this PC yet, so the pilot runs directly:
 
 - Postgres: the local PostgreSQL 18, database `brain`, user `brain` (password = `POSTGRES_PASSWORD` in `.env`).
 - Start everything: `powershell -ExecutionPolicy Bypass -File .\run-local.ps1`
-- Open http://localhost:4200 . Close the three "Brain - ..." windows to stop.
+- Open http://localhost:4200 . Close the four "Brain - ..." windows to stop.
+- Attached files are saved in `data\uploads\` (one folder per file). That folder is not in Git.
 
 Same code as the Docker setup; only the addresses differ (localhost instead of container names).
+
+## Tools
+
+| Tool service | Tools the brain can call | Notes |
+|---|---|---|
+| clock-tool | `get_current_time` | Template for new tools |
+| excel-tool | `excel_profile`, `excel_read_range`, `excel_search` | .xlsx .xlsm .xls .csv; read-only; never follows links, never runs macros or recalculates formulas |
 
 ## Adding a tool
 

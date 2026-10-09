@@ -1,6 +1,6 @@
 import { Component, ElementRef, OnDestroy, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { BrainApi, ChatEvent, ConversationSummary, Health, Stats } from './brain-api';
+import { Attachment, BrainApi, ChatEvent, ConversationSummary, Health, Stats } from './brain-api';
 
 interface ToolStep { name: string; ok: boolean | null; ms: number | null; }
 
@@ -26,6 +26,9 @@ export class App implements OnInit, OnDestroy {
   conversationId = signal<string | null>(null);
   turns = signal<Turn[]>([]);
   draft = signal('');
+  attachments = signal<Attachment[]>([]);
+  uploading = signal(false);
+  uploadError = signal('');
   busy = signal(false);
   waitSeconds = signal(0);
   waitingForFirstWord = signal(false);
@@ -76,7 +79,8 @@ export class App implements OnInit, OnDestroy {
       if (m.role === 'tool') {
         pendingTools.push({ name: m.tool_name ?? '?', ok: m.ok, ms: m.duration_ms });
       } else if (m.role === 'user') {
-        turns.push({ role: 'user', text: m.content, tools: [] });
+        const text = m.content.replace(/\n\n\[Attached file: (.+?) \| file_id: \w+\]/g, '\n\n📎 $1');
+        turns.push({ role: 'user', text, tools: [] });
       } else {
         turns.push({ role: m.role, text: m.content, tools: pendingTools });
         pendingTools = [];
@@ -87,6 +91,26 @@ export class App implements OnInit, OnDestroy {
     this.scrollDown();
   }
 
+  async attach(input: HTMLInputElement) {
+    const list = Array.from(input.files ?? []);
+    input.value = '';
+    this.uploadError.set('');
+    this.uploading.set(true);
+    for (const f of list) {
+      try {
+        const a = await this.api.upload(f);
+        this.attachments.update(x => [...x, a]);
+      } catch (err) {
+        this.uploadError.set(`${f.name}: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+    this.uploading.set(false);
+  }
+
+  removeAttachment(id: string) {
+    this.attachments.update(x => x.filter(a => a.file_id !== id));
+  }
+
   onKey(e: KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -95,19 +119,23 @@ export class App implements OnInit, OnDestroy {
   }
 
   async send() {
-    const text = this.draft().trim();
-    if (!text || this.busy()) return;
+    const files = this.attachments();
+    const text = this.draft().trim() || (files.length ? 'What is this file?' : '');
+    if (!text || this.busy() || this.uploading()) return;
     this.draft.set('');
+    this.attachments.set([]);
+    this.uploadError.set('');
+    const shown = files.length ? `${text}\n\n📎 ${files.map(f => f.name).join(', ')}` : text;
     this.busy.set(true);
     const isNew = this.conversationId() === null;
     const reply: Turn = { role: 'assistant', text: '', tools: [] };
-    this.turns.update(t => [...t, { role: 'user', text, tools: [] }, reply]);
+    this.turns.update(t => [...t, { role: 'user', text: shown, tools: [] }, reply]);
     this.startTimer();
     this.scrollDown();
 
     const update = () => this.turns.update(t => [...t]);
     try {
-      await this.api.chat(text, this.conversationId(), (e: ChatEvent) => {
+      await this.api.chat(text, this.conversationId(), files.map(f => f.file_id), (e: ChatEvent) => {
         switch (e.type) {
           case 'conversation':
             this.conversationId.set(e.id);

@@ -55,11 +55,24 @@
       }
     </section>
 
+    @if (attachments().length || uploading() || uploadError()) {
+      <div class="attachments">
+        @for (a of attachments(); track a.file_id) {
+          <span class="chip">📎 {{ a.name }} <span class="muted">{{ (a.size / 1024).toFixed(0) }} KB</span>
+            <button type="button" (click)="removeAttachment(a.file_id)" title="Remove">✕</button></span>
+        }
+        @if (uploading()) { <span class="chip muted">Uploading…</span> }
+        @if (uploadError()) { <span class="chip fail">{{ uploadError() }}</span> }
+      </div>
+    }
     <form class="composer" (submit)="$event.preventDefault(); send()">
+      <input #picker type="file" hidden multiple accept=".xlsx,.xlsm,.xls,.csv" (change)="attach(picker)">
+      <button type="button" class="attach" (click)="picker.click()" [disabled]="busy() || uploading()"
+              title="Attach a spreadsheet (.xlsx .xls .csv)">📎</button>
       <textarea [ngModel]="draft()" (ngModelChange)="draft.set($event)" name="draft" rows="2"
                 (keydown)="onKey($event)" [disabled]="busy()"
                 placeholder="Ask the brain…  (Enter to send, Shift+Enter for a new line)"></textarea>
-      <button type="submit" [disabled]="busy() || !draft().trim()">{{ busy() ? 'Working…' : 'Send' }}</button>
+      <button type="submit" [disabled]="busy() || uploading() || (!draft().trim() && !attachments().length)">{{ busy() ? 'Working…' : 'Send' }}</button>
     </form>
   </main>
 </div>

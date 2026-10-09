@@ -21,4 +21,22 @@ TOOL_RESULT_MAX_CHARS = int(os.getenv("TOOL_RESULT_MAX_CHARS", "8000"))
 MAX_TOOL_ROUNDS = int(os.getenv("MAX_TOOL_ROUNDS", "4"))
 
 HISTORY_MESSAGES = int(os.getenv("HISTORY_MESSAGES", "20"))
-DATABASE_URL = os.getenv("DATABASE_URL", "")
+
+
+def _database_url() -> str:
+    """DATABASE_URL if given; otherwise built from parts, with the password URL-encoded
+    so characters like @ or : can't break it."""
+    if os.getenv("DATABASE_URL"):
+        return os.environ["DATABASE_URL"]
+    from urllib.parse import quote
+    pw = quote(os.getenv("POSTGRES_PASSWORD", ""), safe="")
+    return (f"postgresql://{os.getenv('DB_USER', 'brain')}:{pw}@{os.getenv('DB_HOST', 'localhost')}"
+            f":{os.getenv('DB_PORT', '5432')}/{os.getenv('DB_NAME', 'brain')}")
+
+
+DATABASE_URL = _database_url()
+
+# Uploaded files live here, one folder per file: <FILES_DIR>/<file_id>/{meta.json, file}
+FILES_DIR = os.getenv("FILES_DIR", "/data/uploads")
+MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "50"))
+ALLOWED_UPLOAD_TYPES = (".xlsx", ".xlsm", ".xls", ".csv")

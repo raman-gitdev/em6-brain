@@ -14,6 +14,7 @@ Read `docs/PROJECT_STATE.md` first: it says what is built, what's next, and the 
 - Only `orchestrator/app/brain.py` knows Ollama's API. The brain's address is `BRAIN_URL` only.
 - Every tool is its own service with the contract `GET /health`, `GET /describe`, `POST /run`
   (see `orchestrator/app/tools.py`). A failing tool must never break the chat.
+- Attached files: `FILES_DIR/<file_id>/` + `meta.json`. Tools get a file_id, never a path.
 - Everything is logged in Postgres schema `brain` (see `orchestrator/app/schema.sql`).
 - All ports are bound to 127.0.0.1. Exposure to colleagues happens later via Cloudflare Access only.
 - Stack: Angular 21 front end, Python 3.12 / FastAPI services, Postgres 16, Docker Compose.

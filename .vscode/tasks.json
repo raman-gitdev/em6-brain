@@ -1,0 +1,28 @@
+// Used by launch.json before starting: installs/updates Python and Node packages.
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Brain: install packages",
+      "type": "shell",
+      "command": "if (-not (Test-Path .venv)) { python -m venv .venv }; & .\\.venv\\Scripts\\python.exe -m pip install --quiet --disable-pip-version-check -r orchestrator/requirements.txt -r tools/clock-tool/requirements.txt -r tools/excel-tool/requirements.txt; if ($LASTEXITCODE -ne 0) { exit 1 }; if (-not (Test-Path frontend/node_modules)) { npm --prefix frontend install }; New-Item -ItemType Directory -Force -Path data/uploads | Out-Null; Write-Host 'Packages ready.'",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "powershell.exe",
+          "args": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command"
+          ]
+        }
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      }
+    }
+  ]
+}

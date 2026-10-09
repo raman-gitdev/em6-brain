@@ -1,7 +1,7 @@
 # run-local.ps1 - start EM6 Brain on this PC WITHOUT Docker.
 #
 # Uses: local PostgreSQL (database "brain"), Ollama on this PC, Python and Node.
-# Opens three windows: clock-tool, orchestrator, frontend. Close them to stop.
+# Opens four windows: clock-tool, excel-tool, orchestrator, frontend. Close them to stop.
 #
 # Run from the Brain folder:
 #   powershell -ExecutionPolicy Bypass -File .\run-local.ps1
@@ -28,7 +28,9 @@ $env:DATABASE_URL = "postgresql://brain:$pw@localhost:5432/brain"
 if (-not $env:BRAIN_URL -or $env:BRAIN_URL -like '*host.docker.internal*') {
     $env:BRAIN_URL = 'http://127.0.0.1:11434'   # 127.0.0.1, not localhost: Ollama listens on IPv4 only
 }
-$env:TOOL_SERVICES = 'http://localhost:8101'
+$env:TOOL_SERVICES = 'http://localhost:8101,http://localhost:8102'
+$env:FILES_DIR = "$root\data\uploads"   # attached files stay on this PC (not in Git)
+New-Item -ItemType Directory -Force -Path $env:FILES_DIR | Out-Null
 $env:NG_CLI_ANALYTICS = 'false'   # stop Angular asking questions on first run
 
 # ---- 3. Python environment (created once, in .venv) -------------------------
@@ -40,7 +42,8 @@ if (-not (Test-Path $py)) {
 }
 Write-Host "Checking Python packages..." -ForegroundColor Cyan
 & $py -m pip install --quiet --disable-pip-version-check `
-    -r "$root\orchestrator\requirements.txt" -r "$root\tools\clock-tool\requirements.txt"
+    -r "$root\orchestrator\requirements.txt" -r "$root\tools\clock-tool\requirements.txt" `
+    -r "$root\tools\excel-tool\requirements.txt"
 if ($LASTEXITCODE -ne 0) { throw "pip install failed." }
 
 # ---- 4. Front-end packages (installed once) ---------------------------------
@@ -61,6 +64,8 @@ function Open-BrainWindow($title, $folder, $command) {
 
 Open-BrainWindow 'Brain - clock-tool' "$root\tools\clock-tool" `
     "& '$py' -m uvicorn app.main:app --host 127.0.0.1 --port 8101"
+Open-BrainWindow 'Brain - excel-tool' "$root\tools\excel-tool" `
+    "& '$py' -m uvicorn app.main:app --host 127.0.0.1 --port 8102"
 Open-BrainWindow 'Brain - orchestrator' "$root\orchestrator" `
     "& '$py' -m uvicorn app.main:app --host 127.0.0.1 --port 8000"
 Open-BrainWindow 'Brain - frontend' "$root\frontend" "npm start"
@@ -68,4 +73,4 @@ Open-BrainWindow 'Brain - frontend' "$root\frontend" "npm start"
 Write-Host ""
 Write-Host "Starting. In about 20 seconds open:  http://localhost:4200" -ForegroundColor Green
 Write-Host "API docs:                            http://localhost:8000/docs"
-Write-Host "To stop: close the three 'Brain - ...' windows."
+Write-Host "To stop: close the four 'Brain - ...' windows."

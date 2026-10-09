@@ -1,0 +1,8 @@
+{
+  "name": "em6-brain",
+  "private": true,
+  "description": "EM6 Brain - local AI assistant. 'npm run dev' starts everything (Ollama runs separately).",
+  "scripts": {
+    "dev": "node scripts/dev.mjs"
+  }
+}

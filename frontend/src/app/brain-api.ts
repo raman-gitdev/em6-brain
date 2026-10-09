@@ -16,6 +16,8 @@ export interface StoredMessage {
   duration_ms: number | null;
 }
 
+export interface Attachment { file_id: string; name: string; size: number; }
+
 export interface Stats { eval_count?: number; eval_duration?: number; total_duration?: number; }
 
 export type ChatEvent =
@@ -41,16 +43,29 @@ export class BrainApi {
     return this.getJson(`/api/conversations/${id}/messages`);
   }
 
+  /** Uploads one file; the returned file_id goes with the next chat message. */
+  async upload(file: File): Promise<Attachment> {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/api/files', { method: 'POST', body: form });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error(body?.detail ?? `Upload failed (${res.status})`);
+    }
+    return res.json() as Promise<Attachment>;
+  }
+
   /** Sends a message and calls onEvent for every streamed event. */
-  async chat(message: string, conversationId: string | null,
+  async chat(message: string, conversationId: string | null, attachments: string[],
              onEvent: (e: ChatEvent) => void): Promise<void> {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, conversation_id: conversationId }),
+      body: JSON.stringify({ message, conversation_id: conversationId, attachments }),
     });
     if (!res.ok || !res.body) {
-      onEvent({ type: 'error', text: `Server returned ${res.status}` });
+      const body = await res.json().catch(() => null);
+      onEvent({ type: 'error', text: body?.detail ?? `Server returned ${res.status}` });
       return;
     }
     const reader = res.body.getReader();

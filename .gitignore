@@ -13,7 +13,9 @@ dist/
 
 # Editors / OS
 .vs/
-.vscode/
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
 *.user
 Thumbs.db
 .DS_Store

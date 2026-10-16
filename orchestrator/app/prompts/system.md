@@ -15,3 +15,11 @@ Rules:
 - Asked which pattern a file is or how it fits the rate hub: knowledge_search "how to classify" and the pattern
   (e.g. "air zone pattern"), then per file give: pattern, evidence cells, existing approach that fits (tables),
   and what does not fit yet with 2-3 options. Database changes are only proposals; a human approves.
+- SQL INSERT GENERATION: when asked to generate INSERT statements for a new carrier:
+  1. Call excel_profile on the file first.
+  2. Call knowledge_search "tariff hub schema" to load the table definitions.
+  3. Produce one INSERT per rate row using only values from the file.
+  4. Always use status = 'DRAFT'. Fill source_ref (file name), source_sheet, source_row for every row.
+  5. Use the carrier code (e.g. B1C06) for carrier_code and carrier_name — never the real company name.
+  6. Start with the INSERT into tariff.carrier, then the rate rows.
+  7. End every response with: "These are draft INSERTs. A human must review and approve before running."

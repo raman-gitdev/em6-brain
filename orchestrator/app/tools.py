@@ -22,28 +22,32 @@ class ToolRegistry:
         self._where: dict[str, str] = {}      # tool name -> service URL
         self._defs: list[dict] = []           # Ollama tool definitions
         self.service_status: dict[str, dict] = {}
+        self._last: dict[str, dict] = {}      # service URL -> last good /describe answer
 
     async def refresh(self, client: httpx.AsyncClient) -> None:
-        """Ask every service what it offers. Down services are skipped, not fatal."""
+        """Ask every service what it offers. A service that doesn't answer (down, or just slow
+        because the PC is busy answering) keeps the tools it offered last time, so the tool list
+        - and the brain's saved reading of it - doesn't flicker."""
         where, defs = {}, []
         for url in self.services:
             try:
-                r = await client.get(f"{url}/describe", timeout=5)
+                r = await client.get(f"{url}/describe", timeout=10)
                 r.raise_for_status()
                 info = r.json()
-                names = []
-                for t in info.get("tools", []):
-                    if t["name"] in where:   # first service wins; never silently swap
-                        continue
-                    where[t["name"]] = url
-                    names.append(t["name"])
-                    defs.append({"type": "function", "function": {
-                        "name": t["name"], "description": t.get("description", ""),
-                        "parameters": t.get("parameters", {"type": "object", "properties": {}})}})
+                self._last[url] = info
                 self.service_status[url] = {"ok": True, "service": info.get("service"),
-                                            "tools": names}
+                                            "tools": [t["name"] for t in info.get("tools", [])]}
             except Exception as e:  # noqa: BLE001
-                self.service_status[url] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+                info = self._last.get(url, {})
+                self.service_status[url] = {"ok": False, "error": f"{type(e).__name__}: {e}",
+                                            "tools": [t["name"] for t in info.get("tools", [])]}
+            for t in info.get("tools", []):
+                if t["name"] in where:   # first service wins; never silently swap
+                    continue
+                where[t["name"]] = url
+                defs.append({"type": "function", "function": {
+                    "name": t["name"], "description": t.get("description", ""),
+                    "parameters": t.get("parameters", {"type": "object", "properties": {}})}})
         self._where, self._defs = where, defs
 
     def ollama_tools(self) -> list[dict]:

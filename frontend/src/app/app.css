@@ -24,6 +24,7 @@
 .row { display: flex; align-items: center; gap: 8px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--bad); flex: none; }
 .dot.ok { background: var(--good); }
+.dot.warn { background: #e0a800; }
 
 /* ---- chat ---- */
 .chat { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -64,6 +65,9 @@
 
 .composer .attach {
   background: var(--panel); color: var(--text); border: 1px solid var(--line); padding: 0 14px; font-size: 18px;
+}
+.composer .stop {
+  background: #c0392b; color: #fff;
 }
 .attachments {
   display: flex; flex-wrap: wrap; gap: 8px;

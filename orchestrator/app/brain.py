@@ -14,7 +14,7 @@ class BrainUnavailable(Exception):
 async def status(client: httpx.AsyncClient) -> dict:
     """Is the brain reachable, and is the configured model installed?"""
     try:
-        r = await client.get(f"{config.BRAIN_URL}/api/tags", timeout=5)
+        r = await client.get(f"{config.BRAIN_URL}/api/tags", timeout=10)
         r.raise_for_status()
         names = [m.get("name") for m in r.json().get("models", [])]
         return {"ok": config.BRAIN_MODEL in names, "url": config.BRAIN_URL,
@@ -22,6 +22,32 @@ async def status(client: httpx.AsyncClient) -> dict:
     except Exception as e:  # noqa: BLE001 - health check reports, never raises
         return {"ok": False, "url": config.BRAIN_URL, "model": config.BRAIN_MODEL,
                 "error": f"{type(e).__name__}: {e}"}
+
+
+async def is_loaded(client: httpx.AsyncClient) -> bool | None:
+    """Is the model already in memory? None = couldn't tell (e.g. Ollama busy) - don't act on it."""
+    try:
+        r = await client.get(f"{config.BRAIN_URL}/api/ps", timeout=10)
+        r.raise_for_status()
+        return any(m.get("name") == config.BRAIN_MODEL or m.get("model") == config.BRAIN_MODEL
+                   for m in r.json().get("models", []))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+async def warm_up(client: httpx.AsyncClient, system_prompt: str, tools: list[dict]) -> None:
+    """Load the model and let it read the system prompt + tool list once.
+    Ollama keeps what it has read, so the next real question reuses it instead of re-reading
+    thousands of tokens. Must send exactly the same system prompt and tools as a real chat."""
+    body = {"model": config.BRAIN_MODEL, "stream": False,
+            "messages": [{"role": "system", "content": system_prompt},
+                         {"role": "user", "content": "ok"}],
+            "options": {"num_ctx": config.BRAIN_NUM_CTX, "num_predict": 1}}
+    if tools:
+        body["tools"] = tools
+    r = await client.post(f"{config.BRAIN_URL}/api/chat", json=body,
+                          timeout=httpx.Timeout(config.BRAIN_TIMEOUT_S, connect=10))
+    r.raise_for_status()
 
 
 async def stream_chat(client: httpx.AsyncClient, messages: list[dict],

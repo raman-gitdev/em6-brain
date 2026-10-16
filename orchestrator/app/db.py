@@ -53,16 +53,18 @@ async def log_message(conversation_id: uuid.UUID, role: str, content: str, *,
 
 
 async def history(conversation_id: uuid.UUID, limit: int) -> list[dict]:
-    """Last `limit` user/assistant turns, oldest first, in Ollama message format."""
+    """Last `limit` messages (user, assistant and tool results), oldest first.
+    Tool results are kept so the brain still knows what it read in earlier turns."""
     rows = await _pool.fetch(
-        """SELECT role, content FROM (
-               SELECT message_id, role, content FROM brain.message
-               WHERE conversation_id = $1 AND role IN ('user', 'assistant')
+        """SELECT role, content, tool_name, tool_args FROM (
+               SELECT message_id, role, content, tool_name, tool_args FROM brain.message
+               WHERE conversation_id = $1 AND role IN ('user', 'assistant', 'tool')
                ORDER BY message_id DESC LIMIT $2
            ) t ORDER BY message_id""",
         conversation_id, limit,
     )
-    return [{"role": r["role"], "content": r["content"]} for r in rows]
+    return [{"role": r["role"], "content": r["content"], "tool_name": r["tool_name"],
+             "tool_args": json.loads(r["tool_args"]) if r["tool_args"] else {}} for r in rows]
 
 
 async def list_conversations(limit: int = 50) -> list[dict]:

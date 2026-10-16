@@ -23,33 +23,40 @@ MAX_SEARCH_HITS = 30
 
 app = FastAPI(title="excel-tool")
 
-FILE_ID = {"type": "string", "description": "The file_id given when the file was attached."}
+FILE_ID = {"type": "string", "description": "file_id of the attached file"}
 TOOLS = [
     {
         "name": "excel_profile",
-        "description": "Overview of an attached spreadsheet: every sheet's size, title rows, "
-                       "likely header row, sample data rows and column types. "
-                       "Call this first whenever the user attaches a spreadsheet.",
+        "description": "Overview of an attached spreadsheet: sheets, tables, headers, row labels, notes. Call first.",
         "parameters": {"type": "object", "properties": {"file_id": FILE_ID},
                        "required": ["file_id"]},
     },
     {
         "name": "excel_read_range",
-        "description": "Read exact cell values from one sheet, e.g. range A1:H20. "
-                       "Use after excel_profile when you need more detail.",
+        "description": "Read exact cells from one sheet, e.g. A1:H20.",
         "parameters": {"type": "object", "properties": {
             "file_id": FILE_ID,
-            "sheet": {"type": "string", "description": "Sheet name exactly as in the profile."},
-            "range": {"type": "string", "description": "Cell range like A1:H20 (max 400 cells)."},
+            "sheet": {"type": "string", "description": "sheet name"},
+            "range": {"type": "string", "description": "e.g. A1:H20, max 400 cells"},
         }, "required": ["file_id", "sheet", "range"]},
     },
     {
-        "name": "excel_search",
-        "description": "Find cells containing a word or phrase in any sheet, e.g. 'valid', "
-                       "'fuel', 'currency', 'minimum'. Case-insensitive.",
+        "name": "excel_lookup",
+        "description": "Get one rate: give the row label (e.g. 'Up to 5 kg') and column header (e.g. 'Kanto'). "
+                       "Returns the value and its cell for every matching table.",
         "parameters": {"type": "object", "properties": {
             "file_id": FILE_ID,
-            "text": {"type": "string", "description": "Word or phrase to look for."},
+            "row": {"type": "string", "description": "row label, e.g. 'Up to 5 kg'"},
+            "column": {"type": "string", "description": "column header, e.g. 'Kanto' or '4 ton Truck'"},
+            "sheet": {"type": "string", "description": "sheet name (optional; all sheets if empty)"},
+        }, "required": ["file_id", "row", "column"]},
+    },
+    {
+        "name": "excel_search",
+        "description": "Find cells containing a word, e.g. 'valid', 'fuel', 'minimum'.",
+        "parameters": {"type": "object", "properties": {
+            "file_id": FILE_ID,
+            "text": {"type": "string", "description": "word or phrase"},
         }, "required": ["file_id", "text"]},
     },
 ]
@@ -83,6 +90,9 @@ def run(req: RunRequest):
         if req.name == "excel_read_range":
             return {"ok": True, "result": read_range(a.get("file_id", ""), a.get("sheet", ""),
                                                      a.get("range", ""))}
+        if req.name == "excel_lookup":
+            return {"ok": True, "result": lookup(a.get("file_id", ""), a.get("row", ""),
+                                                 a.get("column", ""), a.get("sheet") or "")}
         if req.name == "excel_search":
             return {"ok": True, "result": search(a.get("file_id", ""), a.get("text", ""))}
         return {"ok": False, "error": f"excel-tool has no tool named '{req.name}'."}
@@ -176,45 +186,214 @@ def _row_text(row: list[object], n: int = MAX_COLS, width: int = 30) -> str:
     return " | ".join(cells) + more
 
 
+PROFILE_MAX_CHARS = 7500    # keeps the profile inside a small model's memory
+MAX_LABELS = 30
+MAX_TEXT_LINES = 8
+
+
+def _text_line(row: list[object], width: int = 120) -> str:
+    """A title/note row: only its non-empty cells."""
+    return " | ".join(fmt(v, width) for v in row if v is not None and str(v).strip())
+
+
+def _header_line(row: list[object]) -> str:
+    """Header cells tagged with their column letter, so read_range can target them."""
+    return " | ".join(f"{get_column_letter(i + 1)}:{fmt(v)}" for i, v in enumerate(row[:MAX_COLS])
+                      if v is not None and str(v).strip())
+
+
+def _first_value(row: list[object]) -> str:
+    for v in row:
+        if v is not None and str(v).strip():
+            return fmt(v, 30)
+    return ""
+
+
+def _blocks(rows: list[list[object]]) -> list[tuple[int, int]]:
+    """Runs of non-empty rows, as (first, last) indexes."""
+    out, start = [], None
+    for i, r in enumerate(rows):
+        if _filled(r):
+            if start is None:
+                start = i
+        elif start is not None:
+            out.append((start, i - 1))
+            start = None
+    if start is not None:
+        out.append((start, len(rows) - 1))
+    return out
+
+
+def _profile_sheet(s: Sheet) -> list[str]:
+    rows = s.rows
+    widest = max((_filled(r) for r in rows), default=0)
+    wide = max(3, 0.5 * widest)
+    lines: list[str] = []
+    for a, b in _blocks(rows):
+        idx = list(range(a, b + 1))
+        wide_rows = [i for i in idx if _filled(rows[i]) >= wide]
+        if not wide_rows:                       # titles or notes
+            for i in idx[:MAX_TEXT_LINES]:
+                lines.append(f"  r{i + 1}: {_text_line(rows[i])}")
+            if len(idx) > MAX_TEXT_LINES:
+                lines.append(f"  …(+{len(idx) - MAX_TEXT_LINES} more text rows)")
+            continue
+        h = wide_rows[0]
+        if len(wide_rows) == 1 and not any(_filled(rows[i]) >= 2 for i in range(h + 1, b + 1)):
+            for i in idx[:MAX_TEXT_LINES]:            # a lone wide row is a label line, not a table
+                lines.append(f"  r{i + 1}: {_text_line(rows[i])}")
+            continue
+        for i in idx:
+            if i >= h:
+                break
+            lines.append(f"  r{i + 1}: {_text_line(rows[i])}")
+        last = wide_rows[-1]
+        data = [i for i in range(h + 1, last + 1) if _filled(rows[i]) >= 2]
+        lines.append(f"  TABLE r{h + 1}-r{last + 1}. Header: {_header_line(rows[h])}")
+        if data:
+            labels = [f"r{i + 1} {_first_value(rows[i])}" for i in data]
+            more = f", …(+{len(labels) - MAX_LABELS})" if len(labels) > MAX_LABELS else ""
+            lines.append(f"  Row labels ({len(labels)} rows): {', '.join(labels[:MAX_LABELS])}{more}")
+            shown = data[:2] + ([data[-1]] if len(data) > 2 else [])
+            for i in shown:
+                lines.append(f"  r{i + 1}: {_row_text(rows[i])}")
+        notes = [i for i in range(last + 1, b + 1)]
+        for i in notes[:MAX_TEXT_LINES]:
+            lines.append(f"  r{i + 1}: {_text_line(rows[i])}")
+        if len(notes) > MAX_TEXT_LINES:
+            lines.append(f"  …(+{len(notes) - MAX_TEXT_LINES} more text rows)")
+    return lines
+
+
 def profile(file_id: str) -> str:
     path, meta = _resolve(file_id)
     sheets = load(path, PROFILE_MAX_ROWS)
     out = [f"File: {meta['original_name']} ({meta.get('size', 0) / 1024:.0f} KB), "
-           f"{len(sheets)} sheet(s): {', '.join(repr(s.name) for s in sheets)}"]
+           f"{len(sheets)} sheet(s): {', '.join(repr(s.name) for s in sheets)}",
+           "Rows are numbered rN; header cells show their column letter. "
+           "Use excel_read_range for exact values."]
+    seen: dict[tuple, tuple[str, set[str]]] = {}   # table layout -> (sheet name, its lines)
     for s in sheets[:MAX_SHEETS]:
         out.append("")
-        merged = ("merged cells unknown" if s.merged is None else
-                  f"{len(s.merged)} merged range(s)" +
-                  (f" e.g. {', '.join(s.merged[:4])}" if s.merged else ""))
-        out.append(f"Sheet '{s.name}': {s.n_rows} rows x {s.n_cols} cols, {merged}")
-        rows = s.rows
-        if not any(_filled(r) for r in rows):
+        merged = ("" if s.merged is None else f", {len(s.merged)} merged range(s)")
+        out.append(f"Sheet '{s.name}': {s.n_rows} rows x {s.n_cols} cols{merged}")
+        if not any(_filled(r) for r in s.rows):
             out.append("  (empty)")
             continue
-        h = _guess_header(rows)
-        if h is None:
-            out.append("  No clear table found. First rows:")
-            for i, r in enumerate(rows[:8]):
-                if _filled(r):
-                    out.append(f"  r{i + 1}: {_row_text(r, width=100)}")
+        lines = _profile_sheet(s)
+        layout = tuple(l.split(":", 1)[1] for l in lines
+                       if l.startswith("  TABLE") or l.startswith("  Row labels"))
+        if layout and layout in seen:
+            first, first_lines = seen[layout]
+            diff = [l for l in lines if l.split(": ", 1)[-1] not in first_lines
+                    and not l.startswith("  TABLE") and not l.startswith("  Row labels")]
+            out.append(f"  Same table layout as sheet '{first}' (same headers and row labels; "
+                       f"values differ - read them with excel_read_range on this sheet). Lines that differ:")
+            out.extend(diff[:12])
             continue
-        above = [(i, r) for i, r in enumerate(rows[:h]) if _filled(r)]
-        if above:
-            out.append("  Above the table:")
-            for i, r in above[:6]:
-                out.append(f"  r{i + 1}: {_row_text(r, width=100)}")
-        out.append(f"  Likely header (row {h + 1}): {_row_text(rows[h])}")
-        data = [(i, r) for i, r in enumerate(rows[h + 1:], start=h + 1) if _filled(r)]
-        out.append("  First data rows:")
-        for i, r in data[:SAMPLE_ROWS]:
-            out.append(f"  r{i + 1}: {_row_text(r)}")
-        width = min(max((len(r) for _, r in data), default=0), s.n_cols or 0) or len(rows[h])
-        out.append(f"  Column types: {_column_kinds([r for _, r in data], min(width, 52))}")
+        if layout:
+            seen[layout] = (s.name, {l.split(": ", 1)[-1] for l in lines})
+        out.extend(lines)
         if s.n_rows > PROFILE_MAX_ROWS:
             out.append(f"  (profile read the first {PROFILE_MAX_ROWS} of {s.n_rows} rows)")
     if len(sheets) > MAX_SHEETS:
         out.append(f"\n(+{len(sheets) - MAX_SHEETS} more sheets not profiled)")
-    return "\n".join(out)
+    text = "\n".join(out)
+    if len(text) > PROFILE_MAX_CHARS:
+        text = text[:PROFILE_MAX_CHARS] + "\n…(profile cut to fit; use excel_read_range or excel_search for the rest)"
+    return text
+
+
+# ---------------------------------------------------------------- lookup
+
+def _norm(v: object) -> str:
+    return " ".join(str(v).lower().replace("\n", " ").split()) if v is not None else ""
+
+
+def _tables(s: Sheet) -> list[dict]:
+    """Every table in a sheet: header row, data rows and the title line just above it."""
+    rows = s.rows
+    widest = max((_filled(r) for r in rows), default=0)
+    wide = max(3, 0.5 * widest)
+    out, last_text = [], ""
+    for a, b in _blocks(rows):
+        wide_rows = [i for i in range(a, b + 1) if _filled(rows[i]) >= wide]
+        title = last_text
+        for i in range(a, (wide_rows[0] if wide_rows else b + 1)):
+            last_text = _text_line(rows[i])
+            title = last_text
+        if len(wide_rows) < 2:
+            if wide_rows:
+                last_text = _text_line(rows[wide_rows[0]])
+            continue
+        h, end = wide_rows[0], wide_rows[-1]
+        out.append({"title": title, "header": h, "data": [i for i in range(h + 1, end + 1)
+                                                            if _filled(rows[i]) >= 2]})
+    return out
+
+
+def _label_columns(s: Sheet, t: dict) -> list[int]:
+    """Columns that hold row labels (mostly text below the header), e.g. A, or A and E side by side."""
+    cols = []
+    width = max((len(s.rows[i]) for i in t["data"]), default=0)
+    for c in range(width):
+        vals = [s.rows[i][c] for i in t["data"] if c < len(s.rows[i]) and s.rows[i][c] not in (None, "")]
+        if vals and sum(isinstance(v, str) for v in vals) >= 0.6 * len(vals):
+            cols.append(c)
+    return cols or [0]
+
+
+def _match(wanted: str, have: str) -> int:
+    """2 = same text, 1 = one contains the other, 0 = no match."""
+    if not have:
+        return 0
+    if wanted == have:
+        return 2
+    return 1 if wanted in have or have in wanted else 0
+
+
+def lookup(file_id: str, row: str, column: str, sheet: str = "") -> str:
+    path, _ = _resolve(file_id)
+    want_r, want_c = _norm(row), _norm(column)
+    if not want_r or not want_c:
+        raise ToolError("Give both a row label and a column header.")
+    sheets = load(path, PROFILE_MAX_ROWS)
+    if sheet:
+        sheets = [_sheet(sheets, sheet)]
+    hits = []
+    for s in sheets:
+        for t in _tables(s):
+            header = s.rows[t["header"]]
+            cols = [(c, _match(want_c, _norm(v))) for c, v in enumerate(header)]
+            cols = [x for x in cols if x[1]]
+            if not cols:
+                continue
+            best_c = max(m for _, m in cols)
+            label_cols = _label_columns(s, t)
+            for c, m in cols:
+                if m != best_c or c in label_cols:
+                    continue
+                lc = max([x for x in label_cols if x < c], default=label_cols[0])
+                rows_found = [(i, _match(want_r, _norm(s.rows[i][lc] if lc < len(s.rows[i]) else None)))
+                              for i in t["data"]]
+                rows_found = [x for x in rows_found if x[1]]
+                if not rows_found:
+                    continue
+                best_r = max(m2 for _, m2 in rows_found)
+                for i, m2 in rows_found:
+                    if m2 != best_r:
+                        continue
+                    v = s.rows[i][c] if c < len(s.rows[i]) else None
+                    cell = f"{get_column_letter(c + 1)}{i + 1}"
+                    hits.append(f"'{s.name}'!{cell} = {fmt(v, 60) or '(empty)'}   "
+                                f"[row '{fmt(s.rows[i][lc], 40)}', column '{fmt(header[c], 40)}'; "
+                                f"table r{t['header'] + 1}: {fmt(t['title'], 90) or 'no title'}]")
+    if not hits:
+        return (f"No cell found for row '{row}' and column '{column}'. Check the exact labels in "
+                f"excel_profile (row labels start with rN, headers show column letters).")
+    note = ("\nSeveral tables match: choose by the table title (e.g. normal vs dangerous goods, "
+            "or which departure point)." if len(hits) > 1 else "")
+    return "\n".join(hits[:12]) + note
 
 
 # ---------------------------------------------------------------- read / search

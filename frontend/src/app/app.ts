@@ -30,6 +30,7 @@ export class App implements OnInit, OnDestroy {
   uploading = signal(false);
   uploadError = signal('');
   busy = signal(false);
+  private _abort: AbortController | null = null;
   waitSeconds = signal(0);
   waitingForFirstWord = signal(false);
 
@@ -58,6 +59,9 @@ export class App implements OnInit, OnDestroy {
 
   async refreshHealth() {
     try { this.health.set(await this.api.health()); } catch { this.health.set(null); }
+    if (this.health()?.brain.warming) {
+      setTimeout(() => this.refreshHealth(), 5000);   // check again soon while the brain warms up
+    }
   }
 
   async refreshConversations() {
@@ -118,6 +122,11 @@ export class App implements OnInit, OnDestroy {
     }
   }
 
+  stopChat() {
+    this._abort?.abort();
+    this._abort = null;
+  }
+
   async send() {
     const files = this.attachments();
     const text = this.draft().trim() || (files.length ? 'What is this file?' : '');
@@ -127,6 +136,7 @@ export class App implements OnInit, OnDestroy {
     this.uploadError.set('');
     const shown = files.length ? `${text}\n\n📎 ${files.map(f => f.name).join(', ')}` : text;
     this.busy.set(true);
+    this._abort = new AbortController();
     const isNew = this.conversationId() === null;
     const reply: Turn = { role: 'assistant', text: '', tools: [] };
     this.turns.update(t => [...t, { role: 'user', text: shown, tools: [] }, reply]);
@@ -162,12 +172,19 @@ export class App implements OnInit, OnDestroy {
         }
         update();
         this.scrollDown();
-      });
+      }, this._abort.signal);
     } catch (err) {
-      reply.role = 'error';
-      reply.text = `Couldn't reach the app server: ${err}`;
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        // user stopped — keep whatever text arrived, mark as stopped
+        if (!reply.text) reply.text = '(stopped)';
+        reply.stats = 'Stopped by user';
+      } else {
+        reply.role = 'error';
+        reply.text = `Couldn't reach the app server: ${err}`;
+      }
       update();
     } finally {
+      this._abort = null;
       this.stopTimer();
       this.busy.set(false);
       if (isNew) this.refreshConversations();

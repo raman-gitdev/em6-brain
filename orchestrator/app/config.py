@@ -12,7 +12,7 @@ def _list(name: str) -> list[str]:
 
 BRAIN_URL = os.getenv("BRAIN_URL", "http://host.docker.internal:11434").rstrip("/")
 BRAIN_MODEL = os.getenv("BRAIN_MODEL", "qwen2.5:7b")
-BRAIN_NUM_CTX = int(os.getenv("BRAIN_NUM_CTX", "8192"))
+BRAIN_NUM_CTX = int(os.getenv("BRAIN_NUM_CTX", "16384"))
 BRAIN_TIMEOUT_S = float(os.getenv("BRAIN_TIMEOUT_S", "600"))
 
 TOOL_SERVICES = _list("TOOL_SERVICES")
@@ -20,7 +20,9 @@ TOOL_TIMEOUT_S = float(os.getenv("TOOL_TIMEOUT_S", "30"))
 TOOL_RESULT_MAX_CHARS = int(os.getenv("TOOL_RESULT_MAX_CHARS", "8000"))
 MAX_TOOL_ROUNDS = int(os.getenv("MAX_TOOL_ROUNDS", "4"))
 
-HISTORY_MESSAGES = int(os.getenv("HISTORY_MESSAGES", "20"))
+HISTORY_MESSAGES = int(os.getenv("HISTORY_MESSAGES", "30"))
+# how many of the most recent tool results the brain sees in full on the next turns
+HISTORY_FULL_TOOL_RESULTS = int(os.getenv("HISTORY_FULL_TOOL_RESULTS", "3"))
 
 
 def _database_url() -> str:
@@ -40,3 +42,9 @@ DATABASE_URL = _database_url()
 FILES_DIR = os.getenv("FILES_DIR", "/data/uploads")
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "50"))
 ALLOWED_UPLOAD_TYPES = (".xlsx", ".xlsm", ".xls", ".csv")
+
+# Knowledge library: files in core/ are added to every prompt; the rest is searched by knowledge-tool
+KNOWLEDGE_DIR = os.getenv("KNOWLEDGE_DIR", "/knowledge")
+
+# Time zone for "now" given to the brain with every message
+TIMEZONE = os.getenv("TIMEZONE", "Asia/Kolkata")

@@ -41,7 +41,7 @@ Useful:
    npm run dev
    ```
    It reads `.env`, installs/updates packages, then starts clock-tool, excel-tool, orchestrator and
-   frontend in this one terminal, each line labelled. **Ctrl+C stops everything.**
+   frontend (and knowledge-tool) in this one terminal, each line labelled. **Ctrl+C stops everything.**
 3. Open http://localhost:4200
 
 ## Running from VS Code's Run and Debug panel
@@ -68,8 +68,9 @@ Same code as the Docker setup; only the addresses differ (localhost instead of c
 
 | Tool service | Tools the brain can call | Notes |
 |---|---|---|
-| clock-tool | `get_current_time` | Template for new tools |
-| excel-tool | `excel_profile`, `excel_read_range`, `excel_search` | .xlsx .xlsm .xls .csv; read-only; never follows links, never runs macros or recalculates formulas |
+| clock-tool | `get_current_time` | Template for new tools (not registered, to keep the brain's instructions short) |
+| excel-tool | `excel_profile`, `excel_lookup`, `excel_read_range`, `excel_search` | .xlsx .xlsm .xls .csv; read-only; never follows links, never runs macros or recalculates formulas. `excel_lookup` gets one rate by row label + column header (no row counting). |
+| knowledge-tool | `knowledge_search`, `knowledge_save` | Searches `knowledge/` (full-text index in `brain.knowledge_chunk`); includes the tariff pattern catalogue (`knowledge/patterns/`). Saves user explanations to `knowledge/learned/` only after the user agrees. See `knowledge/README.md` |
 
 ## Adding a tool
 

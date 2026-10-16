@@ -28,7 +28,8 @@ const env = { ...process.env, ...fromFile, PYTHONUNBUFFERED: '1', NG_CLI_ANALYTI
 if (!env.BRAIN_URL || env.BRAIN_URL.includes('host.docker.internal')) {
   env.BRAIN_URL = 'http://127.0.0.1:11434';   // Ollama listens on IPv4 only
 }
-env.TOOL_SERVICES = 'http://127.0.0.1:8101,http://127.0.0.1:8102';
+env.TOOL_SERVICES = 'http://127.0.0.1:8102,http://127.0.0.1:8103';   // clock-tool (8101) is only a template now
+env.KNOWLEDGE_DIR = join(root, 'knowledge');      // the brain's library (Markdown files)
 env.FILES_DIR = join(root, 'data', 'uploads');  // attached files stay on this PC
 delete env.DATABASE_URL;                         // built from POSTGRES_PASSWORD by the app
 mkdirSync(env.FILES_DIR, { recursive: true });
@@ -50,7 +51,8 @@ say('Checking Python packages...');
 run(py, ['-m', 'pip', 'install', '--quiet', '--disable-pip-version-check',
   '-r', join(root, 'orchestrator', 'requirements.txt'),
   '-r', join(root, 'tools', 'clock-tool', 'requirements.txt'),
-  '-r', join(root, 'tools', 'excel-tool', 'requirements.txt')], { shell: false });
+  '-r', join(root, 'tools', 'excel-tool', 'requirements.txt'),
+  '-r', join(root, 'tools', 'knowledge-tool', 'requirements.txt')], { shell: false });
 if (!existsSync(join(root, 'frontend', 'node_modules'))) {
   say('Installing front-end packages (first run only, a few minutes)...');
   run('npm', ['install'], { cwd: join(root, 'frontend') });
@@ -70,8 +72,8 @@ try {
 // ---- 4. Start the services ----------------------------------------------------
 const uvicorn = (port) => [py, ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', String(port)]];
 const services = [
-  { name: 'clock    ', color: 35, cwd: 'tools/clock-tool', cmd: uvicorn(8101) },
   { name: 'excel    ', color: 33, cwd: 'tools/excel-tool', cmd: uvicorn(8102) },
+  { name: 'knowledge', color: 36, cwd: 'tools/knowledge-tool', cmd: uvicorn(8103) },
   { name: 'orchestr ', color: 32, cwd: 'orchestrator', cmd: uvicorn(8000) },
   { name: 'frontend ', color: 34, cwd: 'frontend', cmd: ['npm', ['start']], shell: win },
 ];

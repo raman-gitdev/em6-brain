@@ -20,6 +20,9 @@ dist/
 Thumbs.db
 .DS_Store
 
+# Notes the brain saved from chats: reviewed by people first, then moved into a tracked folder
+knowledge/learned/
+
 # Never commit real carrier or client files
 data/
 uploads/

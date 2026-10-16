@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 
 export interface Health {
-  brain: { ok: boolean; url: string; model: string; model_installed?: boolean; error?: string };
+  brain: { ok: boolean; url: string; model: string; model_installed?: boolean; warming?: boolean; busy?: boolean; error?: string };
   database: { ok: boolean; error?: string };
   tools: Record<string, { ok: boolean; service?: string; tools?: string[]; error?: string }>;
 }
@@ -55,13 +55,14 @@ export class BrainApi {
     return res.json() as Promise<Attachment>;
   }
 
-  /** Sends a message and calls onEvent for every streamed event. */
+  /** Sends a message and calls onEvent for every streamed event. Pass signal to allow cancellation. */
   async chat(message: string, conversationId: string | null, attachments: string[],
-             onEvent: (e: ChatEvent) => void): Promise<void> {
+             onEvent: (e: ChatEvent) => void, signal?: AbortSignal): Promise<void> {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, conversation_id: conversationId, attachments }),
+      signal,
     });
     if (!res.ok || !res.body) {
       const body = await res.json().catch(() => null);

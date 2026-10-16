@@ -1,6 +1,6 @@
 # EM6 Brain - project state
 
-_Last updated: 9 Oct 2026_
+_Last updated: 13 Oct 2026_
 
 ## Goal
 A company "brain": an AI that understands carrier tariff files (Excel/PDF), maps them into the
@@ -44,5 +44,31 @@ rate hub, helps auditors, and later supports managers. Secure, local-first, buil
 - [x] File upload in chat (📎). Files saved to `data/uploads/<file_id>/` with `meta.json`; .xlsx .xlsm .xls .csv, max 50 MB
 - [x] `excel-tool`: `excel_profile` (sheets, title rows, likely header, sample rows, column types, merged cells),
       `excel_read_range` (max 400 cells), `excel_search`. Tested on anonymised sample files.
-- [ ] Try on real carrier files from the test set; note where the profile or the model goes wrong
+- [x] First real test: B1C06 (Japan domestic: consolidated district x weight, dangerous-goods table, district map, charter by km x truck)
+  - Q1 "what is this file" mostly right, but the profile only showed the first table's first rows (missed weights to 100 kg, DG table, mapping, notes)
+  - Q3 rate lookup: model INVENTED a table ("District A 1 kg = 100 JPY"). Root causes, both fixed:
+    1. orchestrator didn't carry tool results to later turns -> brain answered blind (now replayed; latest profile always kept whole)
+    2. profile too thin -> now covers every table block (header with column letters, all row labels, first/last rows), notes, repeated layouts compressed
+  - Prompt now forbids example figures and asks for the source cell of every number; num_ctx 8192 -> 16384
+- [x] `excel_lookup(row label, column header)`: one rate by labels, no row counting. Returns the cell
+      and table title for every matching table (normal vs dangerous-goods etc). Row labels now carry rN.
+      Tested on B1C06: Kanto/Up to 5 kg = E11 578, DG E32 1270; Charter 4 ton/Up to 50 km = I9 42800.
+- [x] Status no longer flickers while answering: a service that doesn't answer keeps its last tool list;
+      `is_loaded` returns None (unknown) instead of False on error; health is cached and reports the brain
+      `busy` during a chat (shown as "(answering…)"); warm-up only when idle, all tools ok, prompt/tools changed.
+- [x] Pattern catalogue (`knowledge/patterns/`): how-to-classify, air (zone / country-to-country /
+      airport-to-airport / zone+postcode), ground (city lane / postcode LTL / region / district×weight /
+      charter / parcel / step pricing). Codes only. Prompt tells the brain to classify a file, cite evidence
+      cells, say which rate-hub approach fits and what's new with options (DB changes are proposals only).
+- [ ] Re-run the B1C06 test after the fixes; then 2 more carriers
+- [x] Knowledge library (RAG): `knowledge/` Markdown files + `knowledge-tool` (search + save-after-user-agrees),
+      full-text index in `brain.knowledge_chunk`; core glossary added to every prompt. Starter docs: glossary,
+      freight audit, rate structures, surcharges, modes, EM6 conventions, rate hub, carrier B1C06.
+      Learned notes go to `knowledge/learned/` (not in Git) for the team to review.
+- [ ] Team/auditors review the starter knowledge; add carrier notes as files are tested
+- [x] Speed: a plain "Hello" in a new chat read 5,546 tokens (220 s at ~25 tok/s) + 21 s model load.
+      Fixes: instructions + tool list cut from 8,357 to ~4,000 chars (compact core glossary; full one in
+      industry/glossary.md; shorter tool descriptions; clock-tool no longer registered), and a background
+      warm-up that pre-reads them on start and whenever the model was unloaded, so Ollama reuses that reading.
+- [ ] Later: meaning-based search (embedding model in Ollama + pgvector) when the library grows
 - [ ] PDF reading (text PDFs first), masters lookup, read-only rate hub queries

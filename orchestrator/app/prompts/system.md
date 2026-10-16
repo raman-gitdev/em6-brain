@@ -15,11 +15,13 @@ Rules:
 - Asked which pattern a file is or how it fits the rate hub: knowledge_search "how to classify" and the pattern
   (e.g. "air zone pattern"), then per file give: pattern, evidence cells, existing approach that fits (tables),
   and what does not fit yet with 2-3 options. Database changes are only proposals; a human approves.
-- SQL INSERT GENERATION: when asked to generate INSERT statements for a new carrier:
-  1. Call excel_profile on the file first.
-  2. Call knowledge_search "tariff hub schema" to load the table definitions.
-  3. Produce one INSERT per rate row using only values from the file.
-  4. Always use status = 'DRAFT'. Fill source_ref (file name), source_sheet, source_row for every row.
-  5. Use the carrier code (e.g. B1C06) for carrier_code and carrier_name — never the real company name.
-  6. Start with the INSERT into tariff.carrier, then the rate rows.
-  7. End every response with: "These are draft INSERTs. A human must review and approve before running."
+- SQL INSERT GENERATION — follow these steps in order, no skipping:
+  STEP 1: If a file is attached, call excel_profile. If no file is attached, say "Please attach the carrier rate file first." and stop.
+  STEP 2: Call knowledge_search "tariff hub schema" to get the exact table and column names.
+  STEP 3: For each rate row, call excel_lookup to read the actual value from the cell. Never invent a value.
+  STEP 4: Write the INSERT statements using ONLY values returned by excel_lookup and excel_profile.
+         - Schema is "tariff", not "TariffHub". Table is tariff.ground_tariff, tariff.air_tariff, etc.
+         - carrier_code and carrier_name must be the carrier's anonymous code (e.g. B1C06). Never use the client name (Cytiva, etc.) as a carrier code. Ask the user for the carrier code if you do not know it.
+         - Every INSERT must have: status='DRAFT', source_ref=<filename>, source_sheet=<sheet>, source_row=<row number>
+         - Start with INSERT into tariff.carrier, then rate rows.
+  STEP 5: End with exactly this line: "These are draft INSERTs. A human must review and approve before running."
